@@ -1,0 +1,134 @@
+# ==============================================================================
+# Node & Frontend (React + Vite)
+# ==============================================================================
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Vite / Build tool caches
+.vite/
+.eslintcache
+.parcel-cache/
+
+# NPM / Yarn / PNPM debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==============================================================================
+# Python
+# ==============================================================================
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution & packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Testing & Type checking
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ==============================================================================
+# Application-Specific Generated Outputs & Data
+# ==============================================================================
+# Django media, static, and local databases
+*.sqlite3
+staticfiles/
+media/
+backend/.env
+Production_Command_Center.html
+
+# Generated comments log spreadsheet (written at runtime by comments_engine.py)
+Critical_FG_Comments_Log.xlsx
+
+# Microsoft Office temporary lock files (created when opening Excel files)
+~$*.xlsx
+~$*.xls
+~$*.xlsm
+
+# Optional: Local input spreadsheets folder
+# Uncomment if you want to prevent raw SAP input data files from being tracked
+# Input/
+
+# ==============================================================================
+# Environment Variables & Secrets
+# ==============================================================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ==============================================================================
+# Operating System Files
+# ==============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# ==============================================================================
+# IDE & Editor Files
+# ==============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# ==============================================================================
+# AI Studio & Tooling Artifacts
+# ==============================================================================
+.aistudio/artifacts/brain/**/.tempmediaStorage/
+

@@ -9,6 +9,7 @@ import {
 } from './types';
 import { initialDashboardData } from './data/initialData';
 import { exportCommentsToExcel } from './utils/calculations';
+import { fetchActiveDashboard, saveCommentApi, deleteCommentApi, getCommentsExcelExportUrl } from './utils/api';
 import { TopBar } from './components/TopBar';
 import { KpiRibbon } from './components/KpiRibbon';
 import { YesterdayTab } from './components/tabs/YesterdayTab';
@@ -51,6 +52,26 @@ export const App: React.FC = () => {
       console.warn('Failed to cache to localStorage', e);
     }
   }, [data]);
+
+  // Load centralized active dataset from Django + PostgreSQL backend on mount
+  useEffect(() => {
+    let isMounted = true;
+    fetchActiveDashboard()
+      .then(res => {
+        if (isMounted && res.has_data && res.data) {
+          setData(res.data);
+          if (res.data.meta?.latest_date_iso) {
+            setSelectedYestDate(res.data.meta.latest_date_iso);
+          }
+        }
+      })
+      .catch(err => {
+        console.warn('Django backend not reached or no active report; running on local data', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Controls State — default to 'dispatch' so user immediately sees the new Dispatch Dashboard & collapsible graphs
   const [activeTab, setActiveTab] = useState<TabType>('dispatch');
@@ -235,11 +256,20 @@ export const App: React.FC = () => {
 
   // Comment Operations
   const handleSaveComment = useCallback((newRec: Partial<CommentRecord>) => {
-    setData(prev => {
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-      const existing = newRec.id ? prev.comments.find(c => c.id === newRec.id) : null;
-      let updatedComments: CommentRecord[];
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const existing = newRec.id ? data.comments.find(c => c.id === newRec.id) : null;
+    let tempId = newRec.id;
+    if (!tempId) {
+      const nums = data.comments.map(c => {
+        const digits = c.id.replace(/\D/g, '');
+        return digits ? parseInt(digits, 10) : 0;
+      });
+      const maxNum = nums.length > 0 ? Math.max(...nums) : 0;
+      tempId = `C${String(maxNum + 1).padStart(4, '0')}`;
+    }
 
+    setData(prev => {
+      let updatedComments: CommentRecord[];
       if (existing) {
         updatedComments = prev.comments.map(c =>
           c.id === existing.id
@@ -247,14 +277,8 @@ export const App: React.FC = () => {
             : c
         );
       } else {
-        const nums = prev.comments.map(c => {
-          const digits = c.id.replace(/\D/g, '');
-          return digits ? parseInt(digits, 10) : 0;
-        });
-        const maxNum = nums.length > 0 ? Math.max(...nums) : 0;
-        const newId = `C${String(maxNum + 1).padStart(4, '0')}`;
         const created: CommentRecord = {
-          id: newId,
+          id: tempId!,
           created: now,
           updated: now,
           part: newRec.part || '',
@@ -277,22 +301,37 @@ export const App: React.FC = () => {
         };
         updatedComments = [created, ...prev.comments];
       }
-
-      return {
-        ...prev,
-        comments: updatedComments
-      };
+      return { ...prev, comments: updatedComments };
     });
 
-    showToast('✅ Comment saved to Critical_FG_Comments_Log database');
-  }, [showToast]);
+    // Save to PostgreSQL database
+    saveCommentApi(newRec)
+      .then(saved => {
+        setData(prev => ({
+          ...prev,
+          comments: prev.comments.map(c => (c.id === tempId ? saved : c))
+        }));
+        showToast('✅ Comment synced to PostgreSQL database');
+      })
+      .catch(err => {
+        console.warn('Backend sync deferred:', err);
+        showToast('✅ Comment saved locally');
+      });
+  }, [data.comments, showToast]);
 
   const handleDeleteComment = useCallback((id: string) => {
     setData(prev => ({
       ...prev,
       comments: prev.comments.filter(c => c.id !== id)
     }));
-    showToast(`🗑️ Comment ${id} deleted`);
+    deleteCommentApi(id)
+      .then(() => {
+        showToast(`🗑️ Comment ${id} deleted from database`);
+      })
+      .catch(err => {
+        console.warn('Backend delete sync deferred:', err);
+        showToast(`🗑️ Comment ${id} deleted`);
+      });
   }, [showToast]);
 
   const handleQuickStatusUpdate = useCallback((part: string, nextStatus: 'Critical' | 'Normal') => {
@@ -441,7 +480,13 @@ export const App: React.FC = () => {
         setKpiCollapsed={setKpiCollapsed}
         resetAllFilters={handleResetFilters}
         openDataModal={() => setIsDataModalOpen(true)}
-        exportCommentsLog={() => exportCommentsToExcel(data.comments)}
+        exportCommentsLog={() => {
+          try {
+            window.location.href = getCommentsExcelExportUrl();
+          } catch {
+            exportCommentsToExcel(data.comments);
+          }
+        }}
       />
 
       {/* KPI Ribbon (supports collapsible mode and Dispatch-aware metrics) */}

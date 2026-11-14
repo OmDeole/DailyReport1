@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { FullDashboardPayload } from '../../types';
 import * as XLSX from 'xlsx';
-import { X, Upload, RotateCcw, Download, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Upload, RotateCcw, Download, CheckCircle2, AlertCircle, Loader2, CloudUpload } from 'lucide-react';
+import { uploadReportPackage, getCommentsExcelExportUrl } from '../../utils/api';
 
 interface DataImportModalProps {
   isOpen: boolean;
@@ -19,10 +20,55 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
   currentData
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backendInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<{ msg: string; isError?: boolean } | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
+  // Handles upload directly to Django + PostgreSQL backend
+  const handleBackendUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    setImportStatus({ msg: 'Uploading and parsing Excel package on server...' });
+
+    try {
+      const formData = new FormData();
+      if (files.length === 1 && files[0].name.toLowerCase().endsWith('.zip')) {
+        formData.append('archive', files[0]);
+      } else {
+        for (let i = 0; i < files.length; i++) {
+          formData.append(`file_${i}`, files[i]);
+        }
+      }
+
+      const res = await uploadReportPackage(formData);
+      if (res.success && res.payload) {
+        onImportData(res.payload);
+        setImportStatus({
+          msg: `✅ Server published report successfully for cutoff ${res.cutoff_date}! All intranet users can now see this report.`,
+          isError: false,
+        });
+      } else {
+        setImportStatus({
+          msg: `Upload error: ${res.error || 'Server could not process files'}`,
+          isError: true,
+        });
+      }
+    } catch (err: any) {
+      setImportStatus({
+        msg: `Failed to upload to server: ${err.message}`,
+        isError: true,
+      });
+    } finally {
+      setIsUploading(false);
+      if (backendInputRef.current) backendInputRef.current.value = '';
+    }
+  };
+
+  // Local fallback parser
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -51,7 +97,6 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
           const data = new Uint8Array(evt.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
           
-          // Check if it contains multiple sheets or comments sheet
           const sheetNames = workbook.SheetNames;
           if (sheetNames.includes('Comments')) {
             const commentsSheet = workbook.Sheets['Comments'];
@@ -85,7 +130,7 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
             setImportStatus({ msg: `Successfully imported ${importedComments.length} comments from ${file.name}` });
           } else {
             setImportStatus({
-              msg: `Excel workbook loaded (${sheetNames.join(', ')}). To import comments, ensure sheet name is 'Comments'.`,
+              msg: `Excel workbook loaded (${sheetNames.join(', ')}). To upload raw data package to server, use the 'Publish to Plant Server' button above.`,
               isError: false
             });
           }
@@ -114,9 +159,9 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-[var(--border)] pb-2.5">
           <div className="flex items-center gap-2">
-            <Upload className="w-5 h-5 text-blue-400" />
+            <CloudUpload className="w-5 h-5 text-blue-400" />
             <span className="font-extrabold text-[14px] text-[var(--text-main)]">
-              Data &amp; Excel Management
+              Daily Report Data Management
             </span>
           </div>
           <button
@@ -136,7 +181,9 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
                 : 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-400'
             }`}
           >
-            {importStatus.isError ? (
+            {isUploading ? (
+              <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin text-blue-400" />
+            ) : importStatus.isError ? (
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
             ) : (
               <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
@@ -144,6 +191,33 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
             <span>{importStatus.msg}</span>
           </div>
         )}
+
+        {/* Primary Action: Upload to Intranet Central Server */}
+        <div
+          onClick={() => !isUploading && backendInputRef.current?.click()}
+          className="border-2 border-dashed border-blue-500/70 hover:border-blue-400 bg-blue-500/10 hover:bg-blue-500/15 rounded-lg p-5 flex flex-col items-center justify-center text-center gap-2 cursor-pointer transition-all"
+        >
+          {isUploading ? (
+            <Loader2 className="w-9 h-9 text-blue-400 animate-spin" />
+          ) : (
+            <CloudUpload className="w-9 h-9 text-blue-400" />
+          )}
+          <div className="text-[13px] font-extrabold text-white">
+            Publish New Daily Package to Server (All Intranet Users)
+          </div>
+          <div className="text-[11px] text-slate-300 max-w-md">
+            Upload the 8 Excel files (<span className="text-blue-300">Calendar, Demand, MB51, MB52, Price, Vendor, Exchange, Master</span>) or a single <strong className="text-white">.ZIP</strong> archive. The server will calculate and immediately broadcast to the plant.
+          </div>
+          <input
+            ref={backendInputRef}
+            type="file"
+            multiple
+            accept=".xlsx,.xls,.zip"
+            onChange={handleBackendUpload}
+            className="hidden"
+            disabled={isUploading}
+          />
+        </div>
 
         {/* Overview of current loaded data */}
         <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded p-3 text-xs space-y-1.5">
@@ -172,38 +246,6 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
           </div>
         </div>
 
-        {/* Expected Excel Input Files Info */}
-        <div className="border border-[var(--border)] rounded p-3 text-xs bg-[var(--bg-card)]/50 space-y-1.5">
-          <div className="font-bold text-blue-400 text-[10.5px] uppercase">
-            Compatible Standard Files
-          </div>
-          <p className="text-slate-400 text-[11px]">
-            In production, the engine reads the 8 standard files:
-            <span className="text-slate-300 font-mono text-[10px] block mt-1">
-              Calendar.xlsx, Demand.xlsx, Exchange Rate.xlsx, Master.xlsx, Mb51.xlsx, MB52.xlsx, Price.xlsx, Vendor.xlsx, Critical_FG_Comments_Log.xlsx
-            </span>
-          </p>
-        </div>
-
-        {/* File upload input */}
-        <div className="border-2 border-dashed border-[var(--border)] hover:border-blue-500 rounded-lg p-5 flex flex-col items-center justify-center text-center gap-2 cursor-pointer transition-colors bg-[var(--bg-card)]/40"
-             onClick={() => fileInputRef.current?.click()}>
-          <Upload className="w-8 h-8 text-blue-400" />
-          <div className="text-xs font-bold text-slate-200">
-            Click to upload Excel (.xlsx) or JSON Backup
-          </div>
-          <div className="text-[10.5px] text-slate-400">
-            Supports Critical_FG_Comments_Log.xlsx or full Command Center JSON exports
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.json"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-        </div>
-
         {/* Action Buttons */}
         <div className="flex items-center justify-between border-t border-[var(--border)] pt-3 gap-2 flex-wrap">
           <button
@@ -219,13 +261,23 @@ export const DataImportModal: React.FC<DataImportModalProps> = ({
             <span>Reset Demo Data</span>
           </button>
 
-          <button
-            onClick={handleExportBackup}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer ml-auto"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download Full Backup JSON</span>
-          </button>
+          <div className="flex items-center gap-2 ml-auto">
+            <a
+              href={getCommentsExcelExportUrl()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-emerald-500/40 text-emerald-400 bg-[var(--bg-card)] hover:bg-emerald-500/15 text-xs font-bold cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download Comments Excel</span>
+            </a>
+
+            <button
+              onClick={handleExportBackup}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download JSON Backup</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
