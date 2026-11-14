@@ -62,6 +62,22 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
+# Test files and directories
+tests.py
+test_*.py
+*_test.py
+tests/
+test/
+backend/api/tests.py
+*.test.ts
+*.test.tsx
+*.test.js
+*.test.jsx
+*.spec.ts
+*.spec.tsx
+*.spec.js
+*.spec.jsx
+
 # ==============================================================================
 # Application-Specific Generated Outputs & Data
 # ==============================================================================
